@@ -9,7 +9,7 @@ ActiveRecord::Base.establish_connection :adapter => "sqlite3",
 class Book < ActiveRecord::Base;
   validates_presence_of :title
   belongs_to :subject
-  has_many :languages
+  belongs_to :volume_set
   has_and_belongs_to_many :authors
 end
 
@@ -25,10 +25,10 @@ class Subject < ActiveRecord::Base;
   has_many :books
 end
 
-class Language < ActiveRecord::Base;
+class VolumeSet < ActiveRecord::Base;
   validates_presence_of :identifier, :name
   validates_uniqueness_of :identifier
-  belongs_to :books
+  has_many :books
 end
 
 def get_table_by_name(string)
@@ -38,8 +38,8 @@ def get_table_by_name(string)
     Author
   elsif string == "subject"
     Subject
-  elsif string == "language"
-    Language
+  elsif string == "volume_set"
+    VolumeSet
   else
     nil
   end
@@ -50,8 +50,8 @@ def attribute_cast(attr, value)
     Subject.where(:identifier => value).first
   elsif attr == "author"
     Author.where(:identifier => value).first
-  elsif attr == "language"
-    Language.where(:identifier => value).first
+  elsif attr == "volume_set"
+    VolumeSet.where(:identifier => value).first
   elsif attr == "birthdate"
     DateTime.parse(value)
   elsif attr == "price"
@@ -68,8 +68,8 @@ def scan_attributes(attributes)
 
   attributes.each do |attr|
     if attr[0] != nil
-      attr[0].scan(/([a-zA-Z0-9]*)\s*=\s*"([a-zA-Z0-9\.\/\-\' ]*)"/).each do |key, value|
-        result = { key => value }
+      attr[0].scan(/([a-zA-Z0-9\_]*)\s*=\s*"([a-zA-Z0-9\.\/\-\'\!\?\(\)\_\: ]*)"/).each do |key, value|
+        result[key] = value
       end
     end
   end
@@ -77,10 +77,44 @@ def scan_attributes(attributes)
   result
 end
 
+def print_books
+  Book.all.each do |b|
+    print "Title: #{b.title} - #{b.subtitle}"
+
+    if b.year != nil
+      puts " (#{b.year})"
+    else
+      puts " "
+    end
+
+    if b.authors != nil and b.authors.first != nil
+      first = true 
+      print "Author(s):"
+
+      b.authors.each do |a|
+        if not first
+          print ","
+        end
+
+        first = false
+        print " #{a.name}"
+      end
+
+      puts " "
+    end
+
+    puts "Subject: #{b.subject.name}" if b.subject != nil
+    puts "Price: $#{b.price}" if b.price != nil
+  end
+end
+
 while true
   print "> "
   input = STDIN.gets.chomp().squeeze(' ')
   first_space = input.index(' ')
+  second_space = nil
+  table_name = nil
+  attributes = nil
 
   if first_space != nil
     second_space = input.index(' ', first_space + 1)
@@ -88,41 +122,18 @@ while true
 
     if second_space != nil
       table_name = input[first_space + 1 .. second_space - 1]
-      attributes = input[second_space + 1 .. -1].scan(/([a-zA-Z0-9]*\s*=\s*"[a-zA-Z0-9\.\/\-\' ]*")*/)
+      attributes = input[second_space + 1 .. -1].scan(/([a-zA-Z0-9\_]*\s*=\s*"[a-zA-Z0-9\.\/\-\'\!\?\(\)\_\: ]*")*/)
+    else
+      table_name = input[first_space + 1 .. -1]
     end
   else
     oper = input
   end
 
-  break if oper == "exit"
-
   if not oper.empty?
-    if oper == "create"
-      jlh = Author.new(:name => "John LeRoy Hennessy")
-      dap = Author.new(:name => "David Andrew Patterson")
-      ast = Author.new(:name => "Andrew Stuart Tanenbaum")
+    break if oper == "exit"
 
-      ca = Subject.new(:name => "Computer Architecture")
-      os = Subject.new(:name => "Operating Systems")
-
-      book = Book.new(:title    => "Computer Architecture, 5th Edition",
-                      :subtitle => "A Quantitative Approach",
-                      :price    => 107.34,
-                      :year     => 2011)
-
-      jlh.save()
-      dap.save()
-      ast.save()
-      ca.save()
-      os.save()
-
-      book.subject = ca
-      book.authors << jlh
-      book.authors << dap
-
-      book.save()
-
-    elsif oper == "insert"
+    if oper == "insert"
       table = get_table_by_name(table_name)
 
       if table != nil
@@ -131,16 +142,29 @@ while true
         if target != nil
           scan_attributes(attributes).each do |attr, value|
             if attr == "author"
-              target[attr.to_sym] << attribute_cast(attr, value)
+              target.authors << attribute_cast(attr, value)
+            elsif attr == "subject"
+              target.subject = attribute_cast(attr, value)
+            elsif attr == "volume_set"
+              target.volume_set = attribute_cast(attr, value)
             else
-              target[attr.to_sym] = attribute_cast(attr, value)
+              begin
+                target[attr.to_sym] = attribute_cast(attr, value)
+              rescue ActiveModel::MissingAttributeError, NoMethodError
+                puts "Invalid attribute: \"#{attr}\""
+              end
             end
           end
         end
 
-        target.save()
+        begin
+          target.save!
+        rescue ActiveModel::MissingAttributeError, NoMethodError
+        rescue ActiveRecord::RecordInvalid
+          puts "Record validation failed, does all the necessary attributes for the table are specified?"
+        end
       else
-        print "Table \"#{table_name}\" doesn't exist!"
+        puts "Table \"#{table_name}\" doesn't exist!"
       end
 
     elsif oper == "edit"
@@ -153,16 +177,49 @@ while true
 
         scan_attributes(attributes).each do |attr, value|
           if last_attr != nil
-            target = target.where(last_attr.to_sym => attribute_cast(last_attr, last_value))
+            if last_attr == "author"
+              list = []
+
+              target.each do |t|
+                if not t.authors.where(:identifier => last_value).empty?
+                  list.push(t.id)
+                end
+              end
+
+              target = table.where(:id => list)
+            else
+              target = target.where(last_attr.to_sym => attribute_cast(last_attr, last_value))
+            end
           end
 
           last_attr = attr
           last_value = value
         end
 
-        target.update_all(last_attr.to_sym => attribute_cast(last_attr, last_value))
+        if last_attr == "author"
+          target.each do |t|
+            t.authors << attribute_cast(last_attr, last_value)
+            t.save!
+          end
+        elsif last_attr == "subject"
+          target.each do |t|
+            t.subject = attribute_cast(last_attr, last_value)
+            t.save!
+          end
+        elsif last_attr == "volume_set"
+          target.each do |t|
+            t.volume_set = attribute_cast(last_attr, last_value)
+            t.save!
+          end
+        else
+          begin
+            target.update_all(last_attr.to_sym => attribute_cast(last_attr, last_value))
+          rescue ActiveRecord::StatementInvalid
+            puts "Invalid attribute specification!"
+          end
+        end
       else
-        print "Table \"#{table_name}\" doesn't exist!"
+        puts "Table \"#{table_name}\" doesn't exist!"
       end
 
     elsif oper == "delete"
@@ -172,42 +229,64 @@ while true
         target = table.all
 
         scan_attributes(attributes).each do |attr, value|
-          target = target.where(attr.to_sym => attribute_cast(attr, value))
+          if attr == "author"
+            list = []
+
+            target.each do |t|
+              if not t.authors.where(:identifier => value).empty?
+                list.push(t.id)
+              end
+            end
+
+            target = table.where(:id => list)
+          else
+            target = target.where(attr.to_sym => attribute_cast(attr, value))
+          end
         end
 
-        target.destroy_all
+        begin
+          target.destroy_all
+        rescue ActiveRecord::StatementInvalid
+          puts "Invalid attribute specification!"
+        end
       else
-        print "Table \"#{table_name}\" doesn't exist!"
+        puts "Table \"#{table_name}\" doesn't exist!"
       end
 
     elsif oper == "print"
-      Book.all.each do |b|
-        print "Title: #{b.title} - #{b.subtitle}"
+      if table_name == "book"
+        print_books
+      elsif table_name == "author"
+        Author.all.each do |a|
+          print "#{a.name}"
+          if a.birthdate != nil
+            print " (#{a.birthdate.strftime("%m/%d/%Y")})"
+          end
 
-        if b.year != nil
-          puts " (#{b.year})"
-        else
-          puts " "
+          puts " [#{a.identifier}]"
         end
+      elsif table_name == "subject"
+        Subject.all.each do |s|
+          puts "#{s.name} [#{s.identifier}]"
+        end
+      elsif table_name == "volume_set"
+        VolumeSet.all.each do |vs|
+          print "#{vs.name} : "
+          first = true
 
-        if b.authors != nil and b.authors.first != nil
-          first = true 
-          print "Author(s):"
-
-          b.authors.each do |a|
+          vs.books.each do |b|
             if not first
-              print ","
+              print ", "
             end
 
             first = false
-            print " #{a.name}"
+            print "#{b.title}"
           end
 
           puts " "
         end
-
-        puts "Subject: #{b.subject.name}" if b.subject != nil
-        puts "Price: $#{b.price}" if b.price != nil
+      else
+        puts "Table \"#{table_name}\" doesn't exist!"
       end
     else
       puts "Invalid command: #{oper}"

@@ -1,0 +1,58 @@
+Ao executar o script, será apresentado um terminal de comandos. Os comandos seguem a sintaxe:
+
+<operação> <tabela> [<atributo="valor"> ...]
+
+Onde a operação pode ser:
+  insert, edit, print ou delete
+
+E a tabela pode ser:
+  book, author, subject ou volume_set
+
+Os atributos variam de cada tabela, sendo que as relações requisitadas são dadas por:
+  1x1 - book x subject
+  1xn - volume_set x book
+  nxn - book x author
+
+OBS1: Ao usar "edit <tabela> [<atributos>] chave="valor" será alterado na tabela "tabela" o valor
+do atributo "chave". Caso a chave seja "author", ele é concatenado aos autores já existentes!
+
+OBS2: Os identificadores (campo identifier) são obrigatórios e usados como referências posteriores
+ao objeto criado.
+
+Os comandos a seguir preenchem a tabela com 3 livros e seus autores, e posteriormente os imprime:
+
+insert author identifier="jlh" name="John LeRoy Hennesy"
+insert author identifier="dap" name="David Andrew Patterson"
+insert author identifier="ast" name="Andrew Stuart Tanenbaum"
+insert author identifier="asw" name="Albert S Woodhull"
+insert author identifier="rah" name="Roberto Andre Hexsel"
+print author
+insert subject identifier="ca" name="Computer Architecture"
+insert subject identifier="os" name="Operating Systems"
+print subject
+insert volume_set identifier="vs1" name="Volume Set 1"
+insert volume_set identifier="vs2" name="Volume Set 2"
+insert book title="Computer Architecture" subtitle="A Quantitative Approach" author="jlh" subject="ca" year="2011"
+edit book title="Computer Architecture" price="107.34"
+edit book title="Computer Architecture" author="dap"
+edit book title="Computer Architecture" volume_set="vs1"
+insert book title="Operating Systems: Design and Implementation" volume_set="vs2" author="ast" subject="os" year="1997" price="166.65"
+edit book volume_set="vs2" author="asw"
+insert book title="Sistemas Digitais e Microprocessadores" volume_set="vs2" author="rah" subject="ca" year="2006" price="7.55"
+print book
+print volume_set
+
+O exemplo a seguir cria um volume_set com 2 livros, depois remove os livros que pertencem ao volume_set
+e o volume_set em si:
+
+insert volume_set identifier="vs_test" name="Test Volume Set"
+insert book title="Test Book 1" volume_set="vs_test"
+insert book title="Test Book 2" volume_set="vs_test"
+print book
+print volume_set
+delete book volume_set="vs_test"
+print book
+print volume_set
+delete volume_set identifier="vs_test"
+print volume_set
+exit

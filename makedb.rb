@@ -11,6 +11,10 @@ ActiveRecord::Base.connection.create_table :books do |t|
   t.string  :subtitle
   t.float   :price
   t.integer :year
+  t.integer :subject_id
+  t.index   :subject_id
+  t.integer :volume_set_id
+  t.index   :volume_set_id
 end
 
 ActiveRecord::Base.connection.create_table :authors do |t|
@@ -24,7 +28,7 @@ ActiveRecord::Base.connection.create_table :subjects do |t|
   t.string  :name
 end
 
-ActiveRecord::Base.connection.create_table :languages do |t|
+ActiveRecord::Base.connection.create_table :volume_sets do |t|
   t.string  :identifier
   t.string  :name
 end
